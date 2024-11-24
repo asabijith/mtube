@@ -290,124 +290,422 @@
         </div>
     </nav>
     <script>
-        // Replace with your YouTube API Key
-        const API_KEY = 'AIzaSyA37YI80VAC1QYi3ojdo6ciYB_LN3xUw5E';
+    // Replace with your YouTube API Key
+// Replace with your YouTube API Key
+const API_KEY = 'AIzaSyCYypEjM0_kjG68UKGceOVSGGAWUDVABoU';
+
+// DOM Elements
+const searchInput = document.getElementById('search-input');
+const searchSuggestions = document.getElementById('search-suggestions');
+const navItems = document.querySelectorAll('.nav-item');
+const videoContainer = document.getElementById('video-container');
+
+// Cache to store search results and minimize API calls
+const searchCache = {};
+
+// Debounce Timer
+let debounceTimeout;
+
+// Music Categories Configuration
+const musicCategories = {
+    home: {
+        query: 'official music video',
+        videoCategoryId: '10',
+        regionCode: 'US',
+        videoDefinition: 'high'
+    },
+    new: {
+        query: 'new songs 2024 official music video ',  // Explicitly exclude shorts
+        videoCategoryId: '10',
+        order: 'date',
+        videoDuration: 'medium',  // Only medium duration videos (> 4 mins)
+        videoDefinition: 'high'   // Only HD videos
+    },
+    trending: {
+        query: 'trending songs official music video ',
+        videoCategoryId: '10',
+        order: 'viewCount',
+        videoDefinition: 'high'
+    },
+    indian: {
+        query: 'new hindi songs 2024 official music video',  // Changed to specifically target Hindi songs
+        videoCategoryId: '10',
+        regionCode: 'IN',
+        videoDefinition: 'high',
+        relevanceLanguage: 'hi',  // Specifically target Hindi content
+        // Custom filters for Indian music section
+        customFilters: {
+            requiredTerms: [
+                'hindi song',
+                'bollywood',
+                'hindi music',
+                'new hindi'
+            ],
+            excludedTerms: [
+                'bengali',
+                'bengoli',
+                'tamil',
+                'telugu',
+                'malayalam',
+                'kannada',
+                'punjabi',
+                'bhojpuri',
+                'marathi',
+                'gujrati',
+                'cover song',
+                'dj remix',
+                'status video'
+            ],
+            requiredChannels: [
+                'T-Series',
+                'Zee Music Company',
+                'Sony Music India',
+                'Venus',
+                'YRF',
+                'Times Music',
+                'Saregama Music'
+            ]
+        }
+    }
+};
+
+// Add this new function to check if a video is from a Bollywood music channel
+function isBollywoodMusicChannel(channelTitle) {
+    const bollywoodChannels = [
+        't-series',
+        'zee music',
+        'sony music india',
+        'venus',
+        'yrf',
+        'times music',
+        'saregama music',
+        'aditya music',
+        'tips official',
+        'wave music',
+        'tseries bhakti sagar',
+        'shemaroo filmi gaane',
+        'eros now music'
+    ];
     
-        // Search and Navigation DOM Elements
-        const searchContainer = document.querySelector('.search-container');
-        const searchInput = document.getElementById('search-input');
-        const searchSuggestions = document.getElementById('search-suggestions');
-        const navItems = document.querySelectorAll('.nav-item');
-        const videoContainer = document.getElementById('video-container');
-    
-        // Event Listeners for Navigation
-        navItems.forEach((item) => {
-            item.addEventListener('click', () => {
-                navItems.forEach((nav) => nav.classList.remove('active'));
-                item.classList.add('active');
-                loadSectionContent(item.dataset.section);
-            });
+    return bollywoodChannels.some(channel => 
+        channelTitle.toLowerCase().includes(channel)
+    );
+}
+
+// Modify the loadVideos function to include enhanced Indian music filtering
+async function loadVideos(query, params = null) {
+    try {
+        let url;
+        if (params) {
+            url = `https://www.googleapis.com/youtube/v3/search?${params.toString()}`;
+        } else {
+            url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&videoCategoryId=10&videoDuration=medium&videoDefinition=high&key=${API_KEY}&maxResults=20&videoEmbeddable=true`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        // Get video durations in a separate request
+        const videoIds = data.items.map(item => item.id.videoId).join(',');
+        const detailsResponse = await fetch(
+            `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${API_KEY}`
+        );
+        const detailsData = await detailsResponse.json();
+
+        // Create a map of video durations
+        const videoDurations = {};
+        detailsData.items.forEach(item => {
+            videoDurations[item.id] = parseDuration(item.contentDetails.duration);
         });
-    
-        // Fetch Suggestions for Search Input
-        searchInput.addEventListener('input', (e) => {
-            const query = e.target.value.trim();
-            if (query.length > 0) {
-                fetchSearchSuggestions(query);
-            } else {
-                searchSuggestions.style.display = 'none';
+
+        // Enhanced filtering with special handling for Indian music
+        const filteredItems = data.items.filter(item => {
+            const title = item.snippet.title.toLowerCase();
+            const description = item.snippet.description.toLowerCase();
+            const channelTitle = item.snippet.channelTitle;
+            const duration = videoDurations[item.id.videoId] || 0;
+            
+            // Check if we're in the Indian music section
+            const isIndianSection = query.includes('hindi songs') || query.includes('bollywood');
+            
+            if (isIndianSection) {
+                // Special filtering for Indian music section
+                const hasRequiredTerms = musicCategories.indian.customFilters.requiredTerms
+                    .some(term => title.includes(term) || description.includes(term));
+                
+                const hasExcludedTerms = musicCategories.indian.customFilters.excludedTerms
+                    .some(term => title.includes(term) || description.includes(term));
+                
+                const isFromBollywoodChannel = isBollywoodMusicChannel(channelTitle);
+                
+                // Additional checks for Hindi/Bollywood content
+                const isHindiContent = 
+                    title.includes('hindi') ||
+                    title.includes('bollywood') ||
+                    description.includes('hindi song') ||
+                    description.includes('bollywood song');
+                
+                // Reject if it fails any of these criteria
+                if (!isHindiContent || hasExcludedTerms || !isFromBollywoodChannel) {
+                    return false;
+                }
             }
+
+            // General music video checks
+            const isMusicVideo = 
+                (title.includes('official') && title.includes('music')) ||
+                title.includes('official music video') ||
+                (title.includes('lyrics') && title.includes('video')) ||
+                (title.includes('song') && title.includes('official'));
+
+            // Unwanted content check
+            const isUnwanted =
+                title.includes('#shorts') ||
+                title.includes('short video') ||
+                title.includes('cover') ||
+                title.includes('reaction') ||
+                title.includes('trailer') ||
+                title.includes('behind the scenes') ||
+                title.includes('making of') ||
+                title.includes('dance practice') ||
+                description.includes('#shorts') ||
+                duration < 180; // Filter out videos shorter than 3 minutes
+
+            return isMusicVideo && !isUnwanted;
         });
-    
-        // Fetch Search Suggestions
-        async function fetchSearchSuggestions(query) {
-            try {
-                const response = await fetch(
-                    `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&key=${API_KEY}&maxResults=5`
-                );
-                const data = await response.json();
-    
-                searchSuggestions.innerHTML = '';
-                searchSuggestions.style.display = 'block';
-    
-                data.items.forEach((item) => {
-                    const suggestion = document.createElement('div');
-                    suggestion.className = 'suggestion-item';
-                    suggestion.textContent = item.snippet.title;
-                    suggestion.addEventListener('click', () => {
-                        searchInput.value = suggestion.textContent;
-                        searchSuggestions.style.display = 'none';
-                        loadVideos(suggestion.textContent);
-                    });
-                    searchSuggestions.appendChild(suggestion);
-                });
-            } catch (error) {
-                console.error('Error fetching suggestions:', error);
-            }
-        }
-    
-        // Load Section Content
-        async function loadSectionContent(section) {
-            let query = '';
-            switch (section) {
-                case 'home':
-                    query = 'popular music';
-                    break;
-                case 'new':
-                    query = 'new music releases';
-                    break;
-                case 'trending':
-                    query = 'trending music';
-                    break;
-                case 'indian':
-                    query = 'indian music';
-                    break;
-                default:
-                    query = 'music';
-                    break;
-            }
-            loadVideos(query);
-        }
-    
-        // Load Videos
-        async function loadVideos(query) {
-            try {
-                const response = await fetch(
-                    `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&key=${API_KEY}&maxResults=20`
-                );
-                const data = await response.json();
-    
-                videoContainer.innerHTML = '';
-                data.items.forEach((item) => {
-                    const videoCard = createVideoCard(item);
-                    videoContainer.appendChild(videoCard);
-                });
-            } catch (error) {
-                console.error('Error loading videos:', error);
-            }
-        }
-    
-        // Create Video Card
-        function createVideoCard(video) {
-            const card = document.createElement('div');
-            card.className = 'video-card';
-            card.innerHTML = `
-                <img src="${video.snippet.thumbnails.high.url}" class="thumbnail" alt="${video.snippet.title}">
-                <div class="video-info">
-                    <div class="video-title">${video.snippet.title}</div>
-                    <div class="channel-name">${video.snippet.channelTitle}</div>
-                </div>
-            `;
-            card.addEventListener('click', () => {
-                window.location.href = `video.html?id=${video.id.videoId}`;
-            });
-            return card;
-        }
-    
-        // Initialize App
-        document.addEventListener('DOMContentLoaded', () => {
-            loadSectionContent('home');
+
+        videoContainer.innerHTML = '';
+        filteredItems.forEach((item) => {
+            const videoCard = createVideoCard(item);
+            videoContainer.appendChild(videoCard);
         });
+    } catch (error) {
+        console.error('Error loading videos:', error);
+    }
+}
+
+
+
+// Event Listeners for Navigation
+navItems.forEach((item) => {
+    item.addEventListener('click', () => {
+        navItems.forEach((nav) => nav.classList.remove('active'));
+        item.classList.add('active');
+        const section = item.dataset.section;
+        loadSectionContent(section);
+    });
+});
+
+// Debounce Search Input
+searchInput.addEventListener('input', (e) => {
+    clearTimeout(debounceTimeout);
+    const query = e.target.value.trim();
+
+    if (query.length > 0) {
+        debounceTimeout = setTimeout(() => {
+            fetchSearchSuggestions(query + ' official music video -shorts');
+        }, 500);
+    } else {
+        searchSuggestions.style.display = 'none';
+    }
+});
+
+// Enhanced Search Suggestions with Shorts Filtering
+async function fetchSearchSuggestions(query) {
+    if (searchCache[query]) {
+        displaySearchSuggestions(searchCache[query]);
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&videoCategoryId=10&videoDuration=medium&videoDefinition=high&key=${API_KEY}&maxResults=5&videoEmbeddable=true`
+        );
+        const data = await response.json();
+
+        // Enhanced filtering for music videos
+        const filteredItems = data.items.filter(item => {
+            const title = item.snippet.title.toLowerCase();
+            const description = item.snippet.description.toLowerCase();
+            
+            // Check for music-related keywords
+            const isMusicVideo = 
+                (title.includes('official') && title.includes('music')) ||
+                title.includes('official music video') ||
+                (title.includes('lyrics') && title.includes('video')) ||
+                (title.includes('song') && title.includes('official'));
+
+            // Enhanced unwanted content check
+            const isUnwanted =
+                title.includes('#shorts') ||
+                title.includes('short video') ||
+                title.includes('cover') ||
+                title.includes('reaction') ||
+                title.includes('trailer') ||
+                title.includes('behind the scenes') ||
+                title.includes('making of') ||
+                title.includes('dance practice') ||
+                description.includes('#shorts');
+
+            // Check video duration from snippet (if available)
+            const duration = item.snippet.duration;
+            const isShortVideo = duration && duration < 240; // Less than 4 minutes
+
+            return isMusicVideo && !isUnwanted && !isShortVideo;
+        });
+
+        searchCache[query] = filteredItems;
+        displaySearchSuggestions(filteredItems);
+    } catch (error) {
+        console.error('Error fetching suggestions:', error);
+    }
+}
+
+// Display Search Suggestions (unchanged)
+function displaySearchSuggestions(items) {
+    searchSuggestions.innerHTML = '';
+    searchSuggestions.style.display = 'block';
+
+    items.forEach((item) => {
+        const suggestion = document.createElement('div');
+        suggestion.className = 'suggestion-item';
+        suggestion.textContent = item.snippet.title;
+        suggestion.addEventListener('click', () => {
+            searchInput.value = suggestion.textContent;
+            searchSuggestions.style.display = 'none';
+            loadVideos(suggestion.textContent);
+        });
+        searchSuggestions.appendChild(suggestion);
+    });
+}
+
+// Enhanced Section Content Loading with Additional Parameters
+async function loadSectionContent(section) {
+    const category = musicCategories[section];
+    if (!category) return;
+
+    const params = new URLSearchParams({
+        part: 'snippet',
+        type: 'video',
+        videoCategoryId: category.videoCategoryId,
+        key: API_KEY,
+        maxResults: '20',
+        videoEmbeddable: 'true',
+        q: category.query,
+        videoDefinition: category.videoDefinition || 'high'
+    });
+
+    if (category.regionCode) {
+        params.append('regionCode', category.regionCode);
+    }
+    if (category.order) {
+        params.append('order', category.order);
+    }
+    if (category.videoDuration) {
+        params.append('videoDuration', category.videoDuration);
+    }
+
+    // Add additional parameters for filtering out shorts
+    params.append('videoDuration', 'medium'); // Exclude very short videos
+
+    loadVideos(category.query, params);
+}
+
+// Enhanced Video Loading with Additional Filtering
+async function loadVideos(query, params = null) {
+    try {
+        let url;
+        if (params) {
+            url = `https://www.googleapis.com/youtube/v3/search?${params.toString()}`;
+        } else {
+            url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&videoCategoryId=10&videoDuration=medium&videoDefinition=high&key=${API_KEY}&maxResults=20&videoEmbeddable=true`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        // Get video durations in a separate request
+        const videoIds = data.items.map(item => item.id.videoId).join(',');
+        const detailsResponse = await fetch(
+            `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${API_KEY}`
+        );
+        const detailsData = await detailsResponse.json();
+
+        // Create a map of video durations
+        const videoDurations = {};
+        detailsData.items.forEach(item => {
+            videoDurations[item.id] = parseDuration(item.contentDetails.duration);
+        });
+
+        // Enhanced filtering with duration check
+        const filteredItems = data.items.filter(item => {
+            const title = item.snippet.title.toLowerCase();
+            const description = item.snippet.description.toLowerCase();
+            const duration = videoDurations[item.id.videoId] || 0;
+            
+            // Check for music-related keywords
+            const isMusicVideo = 
+                (title.includes('official') && title.includes('music')) ||
+                title.includes('official music video') ||
+                (title.includes('lyrics') && title.includes('video')) ||
+                (title.includes('song') && title.includes('official'));
+
+            // Enhanced unwanted content check
+            const isUnwanted =
+                title.includes('#shorts') ||
+                title.includes('short video') ||
+                title.includes('cover') ||
+                title.includes('reaction') ||
+                title.includes('trailer') ||
+                title.includes('behind the scenes') ||
+                title.includes('making of') ||
+                title.includes('dance practice') ||
+                description.includes('#shorts') ||
+                duration < 180; // Filter out videos shorter than 3 minutes
+
+            return isMusicVideo && !isUnwanted;
+        });
+
+        videoContainer.innerHTML = '';
+        filteredItems.forEach((item) => {
+            const videoCard = createVideoCard(item);
+            videoContainer.appendChild(videoCard);
+        });
+    } catch (error) {
+        console.error('Error loading videos:', error);
+    }
+}
+
+// Helper function to parse ISO 8601 duration
+function parseDuration(duration) {
+    const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+    const hours = (parseInt(match[1]) || 0);
+    const minutes = (parseInt(match[2]) || 0);
+    const seconds = (parseInt(match[3]) || 0);
+    return hours * 3600 + minutes * 60 + seconds;
+}
+
+// Create Video Card (unchanged)
+function createVideoCard(video) {
+    const card = document.createElement('div');
+    card.className = 'video-card';
+    card.innerHTML = `
+        <img src="${video.snippet.thumbnails.high.url}" class="thumbnail" alt="${video.snippet.title}">
+        <div class="video-info">
+            <div class="video-title">${video.snippet.title}</div>
+            <div class="channel-name">${video.snippet.channelTitle}</div>
+        </div>
+    `;
+    card.addEventListener('click', () => {
+        window.location.href = `video.html?id=${video.id.videoId}`;
+    });
+    return card;
+}
+
+// Initialize App
+document.addEventListener('DOMContentLoaded', () => {
+    loadSectionContent('home');
+});
     </script>
     
 </body>
