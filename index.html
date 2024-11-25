@@ -375,17 +375,11 @@ function createVideoCard(video) {
     card.appendChild(thumbnail);
     card.appendChild(videoInfo);
     
-    // Add click event to navigate to video.html
+    // Add click event to open video
     card.addEventListener('click', () => {
-        // Store video details in localStorage
-        localStorage.setItem('selectedVideo', JSON.stringify({
-            videoId: video.id.videoId,
-            title: video.snippet.title,
-            channelTitle: video.snippet.channelTitle
-        }));
-        
-        // Navigate to video.html
-        window.location.href = `video.html`;
+        // Navigate to video.html with the videoId in the URL
+        const videoId = video.id.videoId;
+        window.location.href = `video.html?id=${videoId}`;
     });
     
     return card;
