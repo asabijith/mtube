@@ -384,7 +384,10 @@ function createVideoCard(video) {
         }));
         
         // Navigate to video page
-        window.location.href = 'video.html';
+      function playVideo(videoId) {
+    window.location.href = `video.html?id=${videoId}`;
+}
+
     });
     
     return card;
