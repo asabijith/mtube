@@ -348,6 +348,7 @@ async function fetchMusicVideos(query) {
 }
 
 // Create Video Card
+// Create Video Card
 function createVideoCard(video) {
     const card = document.createElement('div');
     card.className = 'video-card';
@@ -374,20 +375,17 @@ function createVideoCard(video) {
     card.appendChild(thumbnail);
     card.appendChild(videoInfo);
     
-    // Add click event to open video
+    // Add click event to navigate to video.html
     card.addEventListener('click', () => {
-        // Store video details in localStorage to pass to video page
+        // Store video details in localStorage
         localStorage.setItem('selectedVideo', JSON.stringify({
             videoId: video.id.videoId,
             title: video.snippet.title,
             channelTitle: video.snippet.channelTitle
         }));
         
-        // Navigate to video page
-      function playVideo(videoId) {
-    window.location.href = `video.html?id=${videoId}`;
-}
-
+        // Navigate to video.html
+        window.location.href = `video.html`;
     });
     
     return card;
